@@ -1,0 +1,15 @@
+# 인증키가 담긴 개인 설정 (git 에 올리지 않음)
+config.ini
+
+# 내려받은 성분 DB 캐시
+cache/
+
+# 입출력 엑셀
+input.xlsx
+output.xlsx
+
+# 파이썬
+__pycache__/
+*.pyc
+.venv/
+venv/
