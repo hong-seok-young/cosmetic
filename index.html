@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>화장품 성분표 자동 작성</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans KR',sans-serif;background:#f4f5f7;color:#1a1a2e;min-height:100vh}
+
+  /* ── 헤더 ── */
+  header{background:linear-gradient(135deg,#7c3aed 0%,#a855f7 60%,#ec4899 100%);padding:28px 32px;color:#fff}
+  header h1{font-size:1.55rem;font-weight:700;letter-spacing:-0.3px}
+  header p{margin-top:5px;font-size:.875rem;opacity:.85}
+
+  /* ── 본문 ── */
+  main{max-width:1100px;margin:28px auto;padding:0 20px;display:flex;flex-direction:column;gap:20px}
+
+  /* ── 카드 ── */
+  .card{background:#fff;border-radius:14px;box-shadow:0 2px 12px rgba(0,0,0,.08);padding:26px 28px}
+  .card h2{font-size:1.05rem;font-weight:700;color:#1a1a2e;margin-bottom:14px;display:flex;align-items:center;gap:10px}
+  .step{display:inline-block;background:#ede9fe;color:#7c3aed;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.5px}
+
+  /* ── DB 상태 ── */
+  .db-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .status-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-size:.82rem;font-weight:600}
+  .status-chip .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .chip-ok{background:#d1fae5;color:#065f46}.chip-ok .dot{background:#10b981}
+  .chip-warn{background:#fef3c7;color:#92400e}.chip-warn .dot{background:#f59e0b}
+  .chip-err{background:#fee2e2;color:#991b1b}.chip-err .dot{background:#ef4444}
+  .chip-info{background:#dbeafe;color:#1e40af}.chip-info .dot{background:#3b82f6;animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .db-count{font-size:.82rem;color:#6b7280}
+  .progress-bar-wrap{width:100%;background:#ede9fe;border-radius:9px;height:7px;overflow:hidden;margin-top:10px}
+  .progress-bar{height:100%;background:linear-gradient(90deg,#7c3aed,#ec4899);border-radius:9px;width:0%;transition:width .4s;animation:indeterminate 1.4s infinite linear}
+  @keyframes indeterminate{0%{transform:translateX(-100%)}100%{transform:translateX(200%)}}
+  .err-box{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;color:#dc2626;font-size:.82rem;margin-top:10px;white-space:pre-wrap;word-break:break-all}
+
+  /* ── 버튼 ── */
+  button{cursor:pointer;border:none;border-radius:8px;font-family:inherit;font-size:.875rem;font-weight:600;transition:all .15s}
+  .btn-primary{background:#7c3aed;color:#fff;padding:9px 22px}
+  .btn-primary:hover{background:#6d28d9}
+  .btn-primary:disabled{background:#c4b5fd;cursor:not-allowed}
+  .btn-ghost{background:#f3f4f6;color:#374151;padding:9px 22px}
+  .btn-ghost:hover{background:#e5e7eb}
+  .btn-success{background:#059669;color:#fff;padding:9px 22px}
+  .btn-success:hover{background:#047857}
+  .btn-success:disabled{background:#6ee7b7;cursor:not-allowed}
+  .btn-sm{padding:5px 12px;font-size:.78rem}
+
+  /* ── 입력 ── */
+  .input-hint{font-size:.82rem;color:#6b7280;margin-bottom:8px}
+  textarea{width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:12px 14px;font-size:.875rem;font-family:inherit;color:#1a1a2e;resize:vertical;line-height:1.6;transition:border-color .15s}
+  textarea:focus{outline:none;border-color:#7c3aed;box-shadow:0 0 0 3px rgba(124,58,237,.12)}
+  .input-actions{margin-top:12px;display:flex;gap:8px;align-items:center}
+
+  /* ── 결과 헤더 ── */
+  .result-bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+  .result-meta{font-size:.82rem;color:#6b7280}
+  .result-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .ratio-hint{font-size:.78rem;color:#9ca3af}
+
+  /* ── 테이블 ── */
+  .table-wrap{overflow-x:auto;border:1.5px solid #e5e7eb;border-radius:10px}
+  table{width:100%;border-collapse:collapse;font-size:.83rem}
+  thead{background:#7c3aed}
+  thead th{color:#fff;font-weight:600;padding:10px 12px;text-align:left;white-space:nowrap}
+  thead th:first-child{border-radius:8px 0 0 0}
+  thead th:last-child{border-radius:0 8px 0 0}
+  tbody tr:nth-child(even){background:#fafafa}
+  tbody tr:hover{background:#f5f3ff}
+  tbody td{padding:8px 12px;border-bottom:1px solid #f0f0f0;vertical-align:top}
+  tbody tr:last-child td{border-bottom:none}
+  td.num{color:#9ca3af;font-size:.78rem;width:36px;text-align:center}
+  td.kor-name{font-weight:600;color:#1a1a2e;white-space:nowrap}
+  td.eng-name{color:#374151}
+  td.cas{font-family:'Courier New',monospace;color:#374151;white-space:nowrap}
+  td.defn{color:#4b5563;max-width:280px}
+  .defn-text{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
+  .btn-more{background:none;border:none;color:#7c3aed;font-size:.75rem;padding:2px 0;cursor:pointer;font-weight:600}
+  .btn-more:hover{text-decoration:underline}
+  input.ratio-input{width:80px;border:1.5px solid #e5e7eb;border-radius:6px;padding:4px 8px;font-size:.83rem;text-align:center;font-family:inherit}
+  input.ratio-input:focus{outline:none;border-color:#7c3aed}
+
+  /* ── 상태 배지 ── */
+  .badge{display:inline-block;padding:2px 9px;border-radius:12px;font-size:.75rem;font-weight:600;white-space:nowrap}
+  .badge-ok{background:#d1fae5;color:#065f46}
+  .badge-sim{background:#fef3c7;color:#92400e}
+  .badge-multi{background:#dbeafe;color:#1e40af}
+  .badge-fail{background:#fee2e2;color:#991b1b}
+
+  /* ── 모달 ── */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:center;justify-content:center}
+  .modal-overlay.open{display:flex}
+  .modal{background:#fff;border-radius:14px;padding:24px 26px;max-width:520px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  .modal h3{font-size:1rem;font-weight:700;margin-bottom:8px;color:#1a1a2e}
+  .modal .modal-sub{font-size:.8rem;color:#7c3aed;margin-bottom:12px}
+  .modal p{font-size:.875rem;color:#374151;line-height:1.7;word-break:break-all}
+  .modal-close{float:right;background:none;border:none;font-size:1.2rem;cursor:pointer;color:#9ca3af;margin-left:8px}
+
+  /* ── 스피너 ── */
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid #ede9fe;border-top-color:#7c3aed;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>화장품 성분표 자동 작성</h1>
+  <p>한글 성분명 → 영문명 · CAS.NO · 기능 자동 조회 (식약처 화장품 원료성분정보 OpenAPI)</p>
+</header>
+
+<main>
+
+  <!-- STEP 1 : DB -->
+  <div class="card">
+    <h2><span class="step">STEP 1</span> 성분 데이터베이스</h2>
+    <div class="db-row">
+      <div id="db-chip" class="status-chip chip-warn"><span class="dot"></span><span id="db-chip-text">확인 중...</span></div>
+      <span id="db-count" class="db-count"></span>
+      <button id="btn-fetch" class="btn-primary btn-sm" onclick="startFetch()" style="display:none">DB 초기화 (최초 1회)</button>
+      <button id="btn-refetch" class="btn-ghost btn-sm" onclick="startFetch()" style="display:none">다시 받기</button>
+    </div>
+    <div id="progress-wrap" class="hidden" style="margin-top:10px">
+      <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+      <div style="font-size:.8rem;color:#6b7280;margin-top:6px" id="progress-text"></div>
+    </div>
+    <div id="err-box" class="err-box hidden"></div>
+  </div>
+
+  <!-- STEP 2 : 입력 -->
+  <div class="card">
+    <h2><span class="step">STEP 2</span> 성분명 입력</h2>
+    <p class="input-hint">한글 성분명을 <strong>한 줄에 하나씩</strong> 붙여넣으세요</p>
+    <textarea id="names" rows="9" placeholder="예시:
+정제수
+글리세린
+부틸렌글라이콜
+나이아신아마이드
+판테놀
+히알루론산"></textarea>
+    <div class="input-actions">
+      <button id="btn-search" class="btn-primary" onclick="doSearch()">조회하기</button>
+      <button class="btn-ghost" onclick="document.getElementById('names').value=''">초기화</button>
+    </div>
+  </div>
+
+  <!-- STEP 3 : 결과 -->
+  <div class="card hidden" id="card-result">
+    <h2><span class="step">STEP 3</span> 결과</h2>
+    <div class="result-bar">
+      <span class="result-meta" id="result-meta"></span>
+      <div class="result-actions">
+        <span class="ratio-hint">✏️ 성분비율은 직접 입력하세요</span>
+        <button class="btn-success" id="btn-export" onclick="exportExcel()">엑셀 다운로드</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>한글성분명</th>
+            <th>영문명</th>
+            <th>성분비율 (%)</th>
+            <th>CAS.NO</th>
+            <th>기능</th>
+            <th>상태</th>
+          </tr>
+        </thead>
+        <tbody id="result-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<!-- 기능 상세 모달 -->
+<div class="modal-overlay" id="modal" onclick="closeModal(event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <h3 id="modal-name"></h3>
+    <div class="modal-sub" id="modal-cas"></div>
+    <p id="modal-defn"></p>
+  </div>
+</div>
+
+<script>
+  let pollTimer = null;
+  let _results = [];
+
+  /* ─── 상태 체크 ─── */
+  async function checkStatus(quiet) {
+    try {
+      const r = await fetch('/api/status');
+      const d = await r.json();
+      updateDbUI(d);
+      return d;
+    } catch(e) {
+      if (!quiet) showErr('서버에 연결할 수 없습니다: ' + e.message);
+    }
+  }
+
+  function updateDbUI(d) {
+    const chip   = document.getElementById('db-chip');
+    const chipTx = document.getElementById('db-chip-text');
+    const countEl= document.getElementById('db-count');
+    const btnF   = document.getElementById('btn-fetch');
+    const btnR   = document.getElementById('btn-refetch');
+    const progW  = document.getElementById('progress-wrap');
+    const progTx = document.getElementById('progress-text');
+    const errBox = document.getElementById('err-box');
+
+    errBox.classList.add('hidden');
+
+    if (d.running) {
+      chip.className = 'status-chip chip-info';
+      chipTx.textContent = '다운로드 중...';
+      countEl.textContent = '';
+      btnF.style.display = 'none';
+      btnR.style.display = 'none';
+      progW.classList.remove('hidden');
+      progTx.innerHTML = '<span class="spinner"></span>' + (d.progress || '');
+      if (!pollTimer) pollTimer = setInterval(() => checkStatus(true), 1000);
+    } else {
+      clearInterval(pollTimer); pollTimer = null;
+      progW.classList.add('hidden');
+
+      if (d.error) {
+        chip.className = 'status-chip chip-err';
+        chipTx.textContent = '오류';
+        countEl.textContent = '';
+        btnF.style.display = d.cached ? 'none' : '';
+        btnR.style.display = '';
+        errBox.textContent = d.error;
+        errBox.classList.remove('hidden');
+      } else if (d.cached) {
+        chip.className = 'status-chip chip-ok';
+        chipTx.textContent = '로드됨';
+        countEl.textContent = d.count ? `${d.count.toLocaleString()}개 성분` : '';
+        btnF.style.display = 'none';
+        btnR.style.display = '';
+      } else {
+        chip.className = 'status-chip chip-warn';
+        chipTx.textContent = 'DB 없음';
+        countEl.textContent = '처음 실행 시 DB 초기화가 필요합니다';
+        btnF.style.display = '';
+        btnR.style.display = 'none';
+      }
+    }
+  }
+
+  function showErr(msg) {
+    const b = document.getElementById('err-box');
+    b.textContent = msg;
+    b.classList.remove('hidden');
+  }
+
+  /* ─── DB 초기화 ─── */
+  async function startFetch() {
+    document.getElementById('err-box').classList.add('hidden');
+    await fetch('/api/fetch');
+    await checkStatus(true);
+  }
+
+  /* ─── 조회 ─── */
+  async function doSearch() {
+    const raw = document.getElementById('names').value.trim();
+    if (!raw) return;
+    const names = raw.split('\n').map(n => n.trim()).filter(Boolean);
+    if (!names.length) return;
+
+    const btn = document.getElementById('btn-search');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>조회 중...';
+
+    try {
+      const r = await fetch('/api/lookup', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({names})
+      });
+      const d = await r.json();
+      if (d.error) { showErr(d.error); return; }
+      _results = d.results;
+      renderTable(_results);
+    } catch(e) {
+      showErr('조회 오류: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '조회하기';
+    }
+  }
+
+  /* ─── 테이블 렌더링 ─── */
+  function renderTable(rows) {
+    const tbody = document.getElementById('result-body');
+    tbody.innerHTML = '';
+
+    rows.forEach((r, i) => {
+      const tr = document.createElement('tr');
+      const badgeCls = {
+        '찾음': 'badge-ok',
+        '유사일치': 'badge-sim',
+        '못찾음': 'badge-fail',
+      }[r.status] || 'badge-multi';
+
+      const defnId = `defn-${i}`;
+      const hasDefn = r.defn && r.defn.trim();
+      const defnHtml = hasDefn
+        ? `<div class="defn-text" id="${defnId}">${esc(r.defn)}</div>
+           <button class="btn-more" onclick="openModal(${i})">자세히 ▸</button>`
+        : '<span style="color:#d1d5db">—</span>';
+
+      tr.innerHTML = `
+        <td class="num">${i+1}</td>
+        <td class="kor-name">${esc(r.name)}</td>
+        <td class="eng-name">${esc(r.eng) || '<span style="color:#d1d5db">—</span>'}</td>
+        <td><input class="ratio-input" type="text" placeholder="예: 5.0" data-idx="${i}"></td>
+        <td class="cas">${esc(r.cas) || '<span style="color:#d1d5db">—</span>'}</td>
+        <td class="defn">${defnHtml}</td>
+        <td><span class="badge ${badgeCls}">${esc(r.status)}</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    const found = rows.filter(r => r.status !== '못찾음').length;
+    document.getElementById('result-meta').textContent =
+      `총 ${rows.length}개 · 매칭 ${found}개 · 미매칭 ${rows.length - found}개`;
+    document.getElementById('card-result').classList.remove('hidden');
+    document.getElementById('card-result').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  /* ─── 모달 ─── */
+  function openModal(i) {
+    const r = _results[i];
+    document.getElementById('modal-name').textContent = r.name + (r.eng ? ` (${r.eng})` : '');
+    document.getElementById('modal-cas').textContent = r.cas ? 'CAS: ' + r.cas : '';
+    document.getElementById('modal-defn').textContent = r.defn || '—';
+    document.getElementById('modal').classList.add('open');
+  }
+  function closeModal(e) {
+    if (!e || e.target === document.getElementById('modal') || e.type === 'click')
+      document.getElementById('modal').classList.remove('open');
+  }
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') closeModal(); });
+
+  /* ─── 엑셀 다운로드 ─── */
+  async function exportExcel() {
+    const ratioInputs = document.querySelectorAll('input.ratio-input');
+    const rows = _results.map((r, i) => ({
+      ...r,
+      ratio: ratioInputs[i] ? ratioInputs[i].value : ''
+    }));
+
+    const btn = document.getElementById('btn-export');
+    btn.disabled = true;
+    btn.textContent = '생성 중...';
+    try {
+      const res = await fetch('/api/export', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({rows})
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        showErr(d.error || '엑셀 생성 실패');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '성분표.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch(e) {
+      showErr('다운로드 오류: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '엑셀 다운로드';
+    }
+  }
+
+  function esc(s) {
+    if (!s) return '';
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* 시작 */
+  checkStatus();
+</script>
+</body>
+</html>
