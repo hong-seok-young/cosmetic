@@ -51,12 +51,19 @@ DEFAULT_OUTPUT = BASE_DIR / "output.xlsx"
 ENDPOINT = "https://apis.data.go.kr/1471000/CsmtcsIngdCpntInfoService01"
 
 # 오퍼레이션명을 모르더라도 동작하도록 후보를 순서대로 시도한다.
+# (End Point 의 마지막 경로 = 서비스명. 오퍼레이션명은 보통 그 변형이다.)
 OPERATION_CANDIDATES = [
     "getCsmtcsIngdCpntInfoService01",
     "getCsmtcsIngdCpntInfoList",
     "getCsmtcsIngdCpntInfo",
+    "getCsmtcsIngdCpntInfo01",
+    "getCsmtcsIngdCpntInfoServiceList",
+    "CsmtcsIngdCpntInfoService01",
     "getList",
 ]
+
+# 인증키 문제로 보이는 신호 (조기 안내용)
+KEY_ERROR_HINTS = ("SERVICE_KEY", "SERVICEKEY", "인증", "CERTIF", "REGISTERED", "ACCESS_DENIED")
 
 # 출력 엑셀 열 순서 (요청하신 항목)
 OUTPUT_HEADERS = ["한글성분명", "영문명", "성분비율", "CAS.NO", "기능", "매칭상태"]
@@ -136,22 +143,31 @@ def call_api(session, service_key, operation, page_no=1, num_rows=100, timeout=3
 
 
 def detect_operation(session, service_key, debug=False):
-    """동작하는 오퍼레이션명을 자동 탐색."""
+    """동작하는 오퍼레이션명을 자동 탐색. 모든 후보를 시도하고 첫 성공을 반환."""
+    key_error = None
+    last = None
     for op in OPERATION_CANDIDATES:
         try:
             code, msg, items, total = call_api(session, service_key, op, 1, 1)
         except requests.RequestException as e:
             if debug:
                 print(f"  [{op}] 요청 실패: {e}")
+            last = ("REQERR", str(e))
             continue
         if debug:
             print(f"  [{op}] code={code} msg={msg!r} total={total} items={len(items)}")
         if code == "00" or items:
             return op
-        # 인증키 자체가 문제면 더 시도해도 소용없음
-        if code in ("30", "22", "20", "10") or "SERVICE_KEY" in str(msg).upper():
-            sys.exit(f"인증키 오류로 보입니다 (code={code}, msg={msg}).\n"
-                     f"공공데이터포털에서 발급한 인증키와 활용신청 상태를 확인하세요.")
+        last = (code, msg)
+        # 인증키 신호는 기억만 해두고(조기 종료하지 않음) 모든 후보를 끝까지 시도
+        if any(h in str(msg).upper() for h in KEY_ERROR_HINTS):
+            key_error = (code, msg)
+    if key_error:
+        sys.exit(f"인증키 오류로 보입니다 (code={key_error[0]}, msg={key_error[1]}).\n"
+                 f"공공데이터포털에서 발급한 일반 인증키(Decoding)와 '활용신청' 승인 상태를 확인하세요.\n"
+                 f"신청 직후라면 적용까지 시간이 걸릴 수 있습니다.")
+    if last and debug:
+        print(f"  마지막 응답: code={last[0]} msg={last[1]!r}")
     return None
 
 
